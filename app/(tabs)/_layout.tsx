@@ -1,11 +1,17 @@
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
-import { Tabs } from 'expo-router';
+import { Redirect, Tabs } from 'expo-router';
 import { Platform } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
 export default function TabLayout() {
+    const { isSignedIn } = useAuth();
     const colorScheme = useColorScheme();
+
+    if (!isSignedIn) {
+        return <Redirect href={'/(auth)/sign-in'} />;
+    }
 
     return (
         <Tabs

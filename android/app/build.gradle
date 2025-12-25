@@ -2,8 +2,6 @@ apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
 
-def enableSeparateBuildPerCPUArchitecture = true
-
 def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
 
 /**
@@ -89,23 +87,15 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace 'com.rakeshlord.Maps'
+    namespace 'com.rakeshlord.Rasta'
     defaultConfig {
-        applicationId 'com.rakeshlord.Maps'
+        applicationId 'com.rakeshlord.Rasta'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "1.0.0"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
-    }
-    splits {
-        abi {
-            reset()
-            enable enableSeparateBuildPerCPUArchitecture
-            universalApk false
-            include "armeabi-v7a", "x86", "arm64-v8a", "x86_64"
-        }
     }
     signingConfigs {
         debug {

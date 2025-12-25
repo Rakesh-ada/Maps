@@ -30,8 +30,12 @@ export default function HomeScreen() {
   const [isNavigationStarted, setIsNavigationStarted] = useState(false);
 
   // Layers State
+  // Layers State
   const [isLayersSheetVisible, setIsLayersSheetVisible] = useState(false);
   const [showTraffic, setShowTraffic] = useState(false);
+  const [showRoadCondition, setShowRoadCondition] = useState(false);
+  const [showWaterlogging, setShowWaterlogging] = useState(false);
+  const [showOverall, setShowOverall] = useState(false);
 
   const userLocationRef = useRef<Location.LocationObject | null>(null);
   const isCompassModeRef = useRef(false);
@@ -395,6 +399,9 @@ export default function HomeScreen() {
         onPoiClick={onPoiClick}
         isUserLocationCentered={isCentered}
         showsTraffic={showTraffic}
+        showRoadCondition={showRoadCondition}
+        showWaterlogging={showWaterlogging}
+        showOverall={showOverall}
       />
 
       {!routeInfo ? (
@@ -443,6 +450,12 @@ export default function HomeScreen() {
         onMapTypeChange={setMapType}
         showTraffic={showTraffic}
         onToggleTraffic={() => setShowTraffic(prev => !prev)}
+        showRoadCondition={showRoadCondition}
+        onToggleRoadCondition={() => setShowRoadCondition(prev => !prev)}
+        showWaterlogging={showWaterlogging}
+        onToggleWaterlogging={() => setShowWaterlogging(prev => !prev)}
+        showOverall={showOverall}
+        onToggleOverall={() => setShowOverall(prev => !prev)}
       />
     </View>
   );

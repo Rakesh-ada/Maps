@@ -24,9 +24,12 @@ interface KolkataMapProps {
     onPoiClick?: (poi: { placeId: string; name: string; coordinate: { latitude: number; longitude: number } }) => void;
     isUserLocationCentered?: boolean;
     showsTraffic?: boolean;
+    showRoadCondition?: boolean;
+    showWaterlogging?: boolean;
+    showOverall?: boolean;
 }
 
-export default function KolkataMap({ selectedPlace, places = [], savedPlaces = [], mapRef, mapType, onRegionChangeComplete, routeCoordinates = [], onPlaceSelect, onMapPress, onPoiClick, isUserLocationCentered, showsTraffic = false }: KolkataMapProps) {
+export default function KolkataMap({ selectedPlace, places = [], savedPlaces = [], mapRef, mapType, onRegionChangeComplete, routeCoordinates = [], onPlaceSelect, onMapPress, onPoiClick, isUserLocationCentered, showsTraffic = false, showRoadCondition = false, showWaterlogging = false, showOverall = false }: KolkataMapProps) {
     useEffect(() => {
         if (selectedPlace && mapRef.current) {
             mapRef.current.animateToRegion({
@@ -46,7 +49,7 @@ export default function KolkataMap({ selectedPlace, places = [], savedPlaces = [
                 initialRegion={KOLKATA_REGION}
                 provider={undefined}
                 mapType={mapType}
-                customMapStyle={customMapStyle}
+                customMapStyle={mapType === 'standard' ? customMapStyle : []}
                 showsUserLocation={true}
                 showsMyLocationButton={false}
                 showsCompass={false}

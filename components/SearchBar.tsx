@@ -1,8 +1,10 @@
+import { useUser } from '@clerk/clerk-expo';
 import { Feather, Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
+import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { FlatList, Keyboard, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { FlatList, Image, Keyboard, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Place } from '../data/kolkataPlaces';
 
@@ -12,6 +14,8 @@ interface SearchBarProps {
 }
 
 export default function SearchBar({ onLocationSelect, userLocation }: SearchBarProps) {
+    const { user } = useUser();
+    const router = useRouter();
     const insets = useSafeAreaInsets();
     const [query, setQuery] = useState('');
     const [results, setResults] = useState<Place[]>([]);
@@ -130,8 +134,7 @@ export default function SearchBar({ onLocationSelect, userLocation }: SearchBarP
                 </View>
                 {weather && (
                     <View style={styles.weatherContainer}>
-                        <Feather name={getWeatherIcon(weather.code)} size={24} color="#5f6368" />
-                        <Text style={styles.tempText}>{Math.round(weather.temp)}°</Text>
+                        <Feather name={getWeatherIcon(weather.code)} size={40} color="#5f6368" />
                     </View>
                 )}
             </View>
@@ -150,12 +153,28 @@ export default function SearchBar({ onLocationSelect, userLocation }: SearchBarP
                         onChangeText={handleSearch}
                     />
 
-                    <TouchableOpacity style={styles.profileButton} onPress={() => { setQuery(''); setResults([]); Keyboard.dismiss(); }}>
+                    <TouchableOpacity 
+                        style={styles.profileButton} 
+                        activeOpacity={0.7}
+                        onPress={() => { 
+                            if (query.length > 0) {
+                                setQuery(''); 
+                                setResults([]); 
+                                Keyboard.dismiss();
+                            } else {
+                                router.push('/(tabs)/profile');
+                            }
+                        }}
+                    >
                         {query.length > 0 ? (
                             <MaterialIcons name="close" size={24} color="#5f6368" />
                         ) : (
                             <View style={styles.avatar}>
-                                <Text style={styles.avatarText}>R</Text>
+                                {user?.imageUrl ? (
+                                    <Image source={{ uri: user.imageUrl }} style={{ width: 30, height: 30, borderRadius: 15 }} />
+                                ) : (
+                                    <Text style={styles.avatarText}>{user?.firstName?.[0] || 'U'}</Text>
+                                )}
                             </View>
                         )}
                     </TouchableOpacity>

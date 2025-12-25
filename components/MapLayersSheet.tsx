@@ -10,9 +10,15 @@ interface MapLayersSheetProps {
     onMapTypeChange: (type: MapType) => void;
     showTraffic: boolean;
     onToggleTraffic: () => void;
+    showRoadCondition: boolean;
+    onToggleRoadCondition: () => void;
+    showWaterlogging: boolean;
+    onToggleWaterlogging: () => void;
+    showOverall: boolean;
+    onToggleOverall: () => void;
 }
 
-export default function MapLayersSheet({ visible, onClose, mapType, onMapTypeChange, showTraffic, onToggleTraffic }: MapLayersSheetProps) {
+export default function MapLayersSheet({ visible, onClose, mapType, onMapTypeChange, showTraffic, onToggleTraffic, showRoadCondition, onToggleRoadCondition, showWaterlogging, onToggleWaterlogging, showOverall, onToggleOverall }: MapLayersSheetProps) {
     return (
         <Modal
             animationType="fade"
@@ -30,23 +36,23 @@ export default function MapLayersSheet({ visible, onClose, mapType, onMapTypeCha
                             </TouchableOpacity>
                         </View>
 
-                        <Text style={styles.sectionTitle}>Map type</Text>
+
                         <View style={styles.typesContainer}>
-                            <TouchableOpacity style={styles.typeOption} onPress={() => onMapTypeChange('standard')}>
+                            <TouchableOpacity activeOpacity={0.7} style={styles.typeOption} onPress={() => onMapTypeChange('standard')}>
                                 <View style={[styles.typeIcon, mapType === 'standard' && styles.selectedTypeIcon]}>
                                     <MaterialIcons name="map" size={28} color={mapType === 'standard' ? '#1A73E8' : '#70757a'} />
                                 </View>
                                 <Text style={[styles.typeText, mapType === 'standard' && styles.selectedTypeText]}>Default</Text>
                             </TouchableOpacity>
 
-                            <TouchableOpacity style={styles.typeOption} onPress={() => onMapTypeChange('satellite')}>
-                                <View style={[styles.typeIcon, mapType === 'satellite' && styles.selectedTypeIcon]}>
-                                    <MaterialIcons name="satellite" size={28} color={mapType === 'satellite' ? '#1A73E8' : '#70757a'} />
+                            <TouchableOpacity activeOpacity={0.7} style={styles.typeOption} onPress={() => onMapTypeChange(mapType === 'hybrid' ? 'standard' : 'hybrid')}>
+                                <View style={[styles.typeIcon, mapType === 'hybrid' && styles.selectedTypeIcon]}>
+                                    <MaterialIcons name="satellite" size={28} color={mapType === 'hybrid' ? '#1A73E8' : '#70757a'} />
                                 </View>
-                                <Text style={[styles.typeText, mapType === 'satellite' && styles.selectedTypeText]}>Satellite</Text>
+                                <Text style={[styles.typeText, mapType === 'hybrid' && styles.selectedTypeText]}>Satellite</Text>
                             </TouchableOpacity>
 
-                            <TouchableOpacity style={styles.typeOption} onPress={() => onMapTypeChange('terrain')}>
+                            <TouchableOpacity activeOpacity={0.7} style={styles.typeOption} onPress={() => onMapTypeChange('terrain')}>
                                 <View style={[styles.typeIcon, mapType === 'terrain' && styles.selectedTypeIcon]}>
                                     <MaterialIcons name="terrain" size={28} color={mapType === 'terrain' ? '#1A73E8' : '#70757a'} />
                                 </View>
@@ -56,13 +62,33 @@ export default function MapLayersSheet({ visible, onClose, mapType, onMapTypeCha
 
                         <View style={styles.divider} />
 
-                        <Text style={styles.sectionTitle}>Map details</Text>
                         <View style={styles.detailsContainer}>
-                            <TouchableOpacity style={styles.typeOption} onPress={onToggleTraffic}>
+                            <TouchableOpacity activeOpacity={0.7} style={styles.typeOption} onPress={onToggleTraffic}>
                                 <View style={[styles.typeIcon, showTraffic && styles.selectedTypeIcon]}>
                                     <MaterialIcons name="traffic" size={28} color={showTraffic ? '#1A73E8' : '#70757a'} />
                                 </View>
                                 <Text style={[styles.typeText, showTraffic && styles.selectedTypeText]}>Traffic</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity activeOpacity={0.7} style={styles.typeOption} onPress={onToggleRoadCondition}>
+                                <View style={[styles.typeIcon, showRoadCondition && styles.selectedTypeIcon]}>
+                                    <MaterialIcons name="add-road" size={28} color={showRoadCondition ? '#1A73E8' : '#70757a'} />
+                                </View>
+                                <Text style={[styles.typeText, showRoadCondition && styles.selectedTypeText]}>Road Condition</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity activeOpacity={0.7} style={styles.typeOption} onPress={onToggleWaterlogging}>
+                                <View style={[styles.typeIcon, showWaterlogging && styles.selectedTypeIcon]}>
+                                    <MaterialIcons name="water-drop" size={28} color={showWaterlogging ? '#1A73E8' : '#70757a'} />
+                                </View>
+                                <Text style={[styles.typeText, showWaterlogging && styles.selectedTypeText]}>Waterlogging</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity activeOpacity={0.7} style={styles.typeOption} onPress={onToggleOverall}>
+                                <View style={[styles.typeIcon, showOverall && styles.selectedTypeIcon]}>
+                                    <MaterialIcons name="layers" size={28} color={showOverall ? '#1A73E8' : '#70757a'} />
+                                </View>
+                                <Text style={[styles.typeText, showOverall && styles.selectedTypeText]}>Overall</Text>
                             </TouchableOpacity>
                         </View>
                     </View>
@@ -96,12 +122,7 @@ const styles = StyleSheet.create({
         fontWeight: '500',
         color: '#202124',
     },
-    sectionTitle: {
-        fontSize: 16,
-        fontWeight: '500',
-        color: '#202124',
-        marginBottom: 16,
-    },
+
     typesContainer: {
         flexDirection: 'row',
         justifyContent: 'space-between',
@@ -110,7 +131,7 @@ const styles = StyleSheet.create({
     },
     typeOption: {
         alignItems: 'center',
-        width: 80,
+        flex: 1,
     },
     typeIcon: {
         width: 56,
@@ -131,6 +152,7 @@ const styles = StyleSheet.create({
         fontSize: 12,
         color: '#70757a',
         fontWeight: '500',
+        textAlign: 'center',
     },
     selectedTypeText: {
         color: '#1A73E8',
@@ -142,6 +164,7 @@ const styles = StyleSheet.create({
     },
     detailsContainer: {
         flexDirection: 'row',
+        justifyContent: 'space-between',
         paddingHorizontal: 10,
     },
 });

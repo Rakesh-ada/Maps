@@ -41,7 +41,7 @@ export default function PlaceDetailSheet({ place, onClose, onNavigate }: PlaceDe
                 </View>
 
                 <View style={styles.actions}>
-                    <TouchableOpacity style={styles.navigateButton} onPress={onNavigate}>
+                    <TouchableOpacity activeOpacity={0.7} style={styles.navigateButton} onPress={onNavigate}>
                         <MaterialIcons name="directions" size={24} color="white" />
                         <Text style={styles.navigateText}>Directions</Text>
                     </TouchableOpacity>

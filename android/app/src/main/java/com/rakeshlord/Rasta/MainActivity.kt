@@ -1,4 +1,4 @@
-package com.rakeshlord.Maps
+package com.rakeshlord.Rasta
 import expo.modules.splashscreen.SplashScreenManager
 
 import android.os.Build
