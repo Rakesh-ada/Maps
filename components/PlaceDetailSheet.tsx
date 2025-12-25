@@ -125,7 +125,8 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         backgroundColor: '#1A73E8',
         paddingVertical: 10,
-        paddingHorizontal: 20,
+        paddingLeft: 16,
+        paddingRight: 16,
         borderRadius: 24,
     },
     navigateText: {
