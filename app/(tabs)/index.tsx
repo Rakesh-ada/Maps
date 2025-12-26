@@ -5,8 +5,9 @@ import RouteInfoSheet from '@/components/RouteInfoSheet';
 import SearchBar from '@/components/SearchBar';
 import StepBanner from '@/components/StepBanner';
 import { Place } from '@/data/kolkataPlaces';
-import { getSavedPlaces, removePlace, savePlace } from '@/services/storage';
-import polyline from '@mapbox/polyline';
+import { reverseGeocode, searchNominatimByViewbox } from '@/services/api/nominatim';
+import { getRoute } from '@/services/api/openRouteService';
+import { getSavedPlaces, removePlace, savePlace } from '@/services/storage/placesStore';
 import * as Location from 'expo-location';
 import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
@@ -110,16 +111,10 @@ export default function HomeScreen() {
     const maxLon = longitude + longitudeDelta / 2;
 
     try {
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?q=restaurant|cafe|hotel&format=json&limit=20&viewbox=${minLon},${maxLat},${maxLon},${minLat}&bounded=1`,
-        {
-          headers: {
-            'User-Agent': 'FreeMapApp/1.0'
-          }
-        }
-      );
-      const data = await response.json();
-      const newPlaces: Place[] = data.map((item: any) => ({
+      const viewbox = `${minLon},${maxLat},${maxLon},${minLat}`;
+      const data = await searchNominatimByViewbox('restaurant|cafe|hotel', viewbox);
+
+      const newPlaces: Place[] = data.map((item) => ({
         id: item.place_id ? item.place_id.toString() : Math.random().toString(),
         name: item.display_name ? item.display_name.split(',')[0] : 'Unknown',
         address: item.display_name || '',
@@ -149,40 +144,31 @@ export default function HomeScreen() {
     const endLon = selectedPlace.longitude;
 
     try {
-      // Use different endpoints for different modes
-      // router.project-osrm.org demo server ONLY supports driving.
-      // routing.openstreetmap.de supports foot.
-      let url = '';
-      if (mode === 'walking') {
-        url = `https://routing.openstreetmap.de/routed-foot/route/v1/foot/${startLon},${startLat};${endLon},${endLat}?overview=full&geometries=polyline&steps=true`;
-      } else {
-        url = `https://router.project-osrm.org/route/v1/driving/${startLon},${startLat};${endLon},${endLat}?overview=full&geometries=polyline&steps=true`;
-      }
+      // Use generalized route service (wraps OSRM/OSM logic)
+      const routeData = await getRoute(
+        { latitude: startLat, longitude: startLon },
+        { latitude: endLat, longitude: endLon },
+        mode
+      );
 
-      const response = await fetch(url);
-      const data = await response.json();
-
-      if (data.routes && data.routes.length > 0) {
-        const route = data.routes[0];
-        const points = polyline.decode(route.geometry);
-        const coords = points.map((point: any) => ({ latitude: point[0], longitude: point[1] }));
-        setRouteCoordinates(coords);
+      if (routeData) {
+        setRouteCoordinates(routeData.coordinates);
 
         // Extract route information
-        const steps = route.legs?.[0]?.steps?.map((step: any) => ({
+        const steps = routeData.steps.map((step: any) => ({
           instruction: step.maneuver?.modifier ? `${step.maneuver.modifier} ${step.maneuver.type}` : step.maneuver?.type || 'Continue',
           distance: step.distance,
           duration: step.duration,
-        })) || [];
+        }));
 
         setRouteInfo({
-          distance: route.distance,
-          duration: route.duration,
+          distance: routeData.distance,
+          duration: routeData.duration,
           steps,
         });
 
         if (mapRef.current) {
-          mapRef.current.fitToCoordinates(coords, {
+          mapRef.current.fitToCoordinates(routeData.coordinates, {
             edgePadding: { top: 50, right: 50, bottom: 250, left: 50 },
             animated: true,
           });
@@ -287,23 +273,16 @@ export default function HomeScreen() {
     if (isNavigationStarted || routeInfo) return;
 
     try {
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${poi.coordinate.latitude}&lon=${poi.coordinate.longitude}&zoom=18&addressdetails=1`,
-        {
-          headers: {
-            'User-Agent': 'FreeMapApp/1.0'
-          }
-        }
-      );
-      const data = await response.json();
+      // Use service for reverse geocoding
+      const data = await reverseGeocode(poi.coordinate.latitude, poi.coordinate.longitude);
+
+      if (!data) throw new Error("POI fetch returned null");
 
       // Clean the name: Remove secondary language (often separated by newline or parens)
       const cleanPlaceName = (originalName: string) => {
         if (!originalName) return originalName;
         // Split by newline and take the first line (often English)
         let name = originalName.split('\n')[0];
-        // Optionally remove text within parens if it looks like a translation (e.g. "Name (Local)")
-        // name = name.replace(/\s*\(.*?\)\s*/g, ''); 
         return name.trim();
       };
 
@@ -334,15 +313,9 @@ export default function HomeScreen() {
     if (isNavigationStarted || routeInfo) return;
 
     try {
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${coordinate.latitude}&lon=${coordinate.longitude}&zoom=18&addressdetails=1`,
-        {
-          headers: {
-            'User-Agent': 'FreeMapApp/1.0'
-          }
-        }
-      );
-      const data = await response.json();
+      const data = await reverseGeocode(coordinate.latitude, coordinate.longitude);
+
+      if (!data) throw new Error("Reverse geocode returned null");
 
       let name = 'Dropped Pin';
       if (data.address) {
