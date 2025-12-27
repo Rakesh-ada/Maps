@@ -2,7 +2,7 @@ import { Place } from '@/data/kolkataPlaces';
 import { customMapStyle } from '@/data/mapStyles';
 import React, { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
-import MapView, { MapType, Marker, Polyline, Region } from 'react-native-maps';
+import MapView, { MapType, Marker, Overlay, Polyline, Region } from 'react-native-maps';
 
 const KOLKATA_REGION = {
     latitude: 22.5726,
@@ -15,6 +15,11 @@ interface KolkataMapProps {
     selectedPlace: Place | null;
     places?: Place[];
     savedPlaces?: Place[];
+    floodAlerts?: any[];
+    waterloggingOverlay?: {
+        imageUrl: string;
+        bounds: [[number, number], [number, number]];
+    } | null;
     mapRef: React.RefObject<MapView | null>;
     mapType: MapType;
     onRegionChangeComplete?: (region: Region, details?: { isGesture?: boolean }) => void;
@@ -29,7 +34,7 @@ interface KolkataMapProps {
     showOverall?: boolean;
 }
 
-export default function KolkataMap({ selectedPlace, places = [], savedPlaces = [], mapRef, mapType, onRegionChangeComplete, routeCoordinates = [], onPlaceSelect, onMapPress, onPoiClick, isUserLocationCentered, showsTraffic = false, showRoadCondition = false, showWaterlogging = false, showOverall = false }: KolkataMapProps) {
+export default function KolkataMap({ selectedPlace, places = [], savedPlaces = [], floodAlerts = [], waterloggingOverlay = null, mapRef, mapType, onRegionChangeComplete, routeCoordinates = [], onPlaceSelect, onMapPress, onPoiClick, isUserLocationCentered, showsTraffic = false, showRoadCondition = false, showWaterlogging = false, showOverall = false }: KolkataMapProps) {
     useEffect(() => {
         if (selectedPlace && mapRef.current) {
             mapRef.current.animateToRegion({
@@ -82,6 +87,27 @@ export default function KolkataMap({ selectedPlace, places = [], savedPlaces = [
                     tileSize={256}
                     zIndex={1}
                 /> */}
+
+                {showWaterlogging && waterloggingOverlay?.imageUrl && (
+                    <Overlay
+                        bounds={waterloggingOverlay.bounds}
+                        image={{ uri: waterloggingOverlay.imageUrl }}
+                    />
+                )}
+
+                {showWaterlogging && floodAlerts.length > 0 &&
+                    floodAlerts
+                        .filter((a: any) => typeof a?.lat === 'number' && typeof a?.lon === 'number')
+                        .map((alert: any, idx: number) => (
+                            <Marker
+                                key={`alert-${alert.id ?? idx}`}
+                                coordinate={{ latitude: alert.lat, longitude: alert.lon }}
+                                title={alert.severity_max ? `Flood Alert (sev ${alert.severity_max})` : 'Flood Alert'}
+                                description={alert.message ?? 'Flood risk reported'}
+                                pinColor="#1A73E8"
+                                zIndex={20}
+                            />
+                        ))}
 
                 {places.map((place) => (
                     <Marker

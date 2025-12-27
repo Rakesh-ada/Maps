@@ -9,13 +9,14 @@ interface MapControlsProps {
     onRecenter: () => void;
     isUserLocationCentered?: boolean;
     onNavigate?: () => void;
+    onReport?: () => void;
     heading?: number;
     isCompassMode?: boolean;
     showLayers?: boolean;
     isNavigation?: boolean;
 }
 
-export default function MapControls({ onOpenLayers, onRecenter, isUserLocationCentered, onNavigate, heading = 0, isCompassMode, showLayers = true, isNavigation = false }: MapControlsProps) {
+export default function MapControls({ onOpenLayers, onRecenter, isUserLocationCentered, onNavigate, onReport, heading = 0, isCompassMode, showLayers = true, isNavigation = false }: MapControlsProps) {
     const insets = useSafeAreaInsets();
 
     return (
@@ -25,6 +26,12 @@ export default function MapControls({ onOpenLayers, onRecenter, isUserLocationCe
                 {showLayers && (
                     <TouchableOpacity style={styles.fab} onPress={onOpenLayers} activeOpacity={0.9}>
                         <MaterialIcons name="layers" size={24} color="#5f6368" />
+                    </TouchableOpacity>
+                )}
+
+                {onReport && showLayers && (
+                    <TouchableOpacity style={styles.fab} onPress={onReport} activeOpacity={0.9} onLongPress={() => { }}>
+                        <MaterialIcons name="campaign" size={24} color="#D93025" />
                     </TouchableOpacity>
                 )}
 

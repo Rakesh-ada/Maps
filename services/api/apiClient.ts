@@ -3,7 +3,7 @@ export const apiClient = async <T>(
     options: RequestInit = {}
 ): Promise<T> => {
     const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), 10000); // 10s timeout
+    const id = setTimeout(() => controller.abort(), 30000); // 30s timeout
 
     try {
         const response = await fetch(url, {

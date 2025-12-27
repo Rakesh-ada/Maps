@@ -1,6 +1,7 @@
 import { apiClient } from './apiClient';
 
-const NOMINATIM_BASE = "https://nominatim.openstreetmap.org/search";
+const NOMINATIM_SEARCH_BASE = "https://nominatim.openstreetmap.org/search";
+const NOMINATIM_REVERSE_BASE = "https://nominatim.openstreetmap.org/reverse";
 
 export interface NominatimResult {
     place_id: number;
@@ -28,7 +29,7 @@ export interface NominatimResult {
 export const searchNominatim = async (query: string): Promise<NominatimResult[]> => {
     if (query.length < 3) return [];
 
-    const url = `${NOMINATIM_BASE}?q=${encodeURIComponent(query)}&format=json&limit=5&addressdetails=1`;
+    const url = `${NOMINATIM_SEARCH_BASE}?q=${encodeURIComponent(query)}&format=json&limit=5&addressdetails=1`;
 
     try {
         return await apiClient<NominatimResult[]>(url, {
@@ -43,7 +44,7 @@ export const searchNominatim = async (query: string): Promise<NominatimResult[]>
 };
 
 export const reverseGeocode = async (lat: number, lon: number): Promise<NominatimResult | null> => {
-    const url = `${NOMINATIM_BASE}/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`;
+    const url = `${NOMINATIM_REVERSE_BASE}?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`;
     try {
         return await apiClient<NominatimResult>(url, {
             headers: {
@@ -57,7 +58,7 @@ export const reverseGeocode = async (lat: number, lon: number): Promise<Nominati
 };
 
 export const searchNominatimByViewbox = async (query: string, viewbox: string): Promise<NominatimResult[]> => {
-    const url = `${NOMINATIM_BASE}?q=${encodeURIComponent(query)}&format=json&limit=20&viewbox=${viewbox}&bounded=1`;
+    const url = `${NOMINATIM_SEARCH_BASE}?q=${encodeURIComponent(query)}&format=json&limit=20&viewbox=${viewbox}&bounded=1`;
     try {
         return await apiClient<NominatimResult[]>(url, {
             headers: {

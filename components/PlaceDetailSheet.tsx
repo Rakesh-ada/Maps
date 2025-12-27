@@ -1,8 +1,9 @@
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Place } from '../data/kolkataPlaces';
+import { floodWatchApi, RiskData } from '../services/api/floodWatch';
 
 interface PlaceDetailSheetProps {
     place: Place;
@@ -11,6 +12,28 @@ interface PlaceDetailSheetProps {
 }
 
 export default function PlaceDetailSheet({ place, onClose, onNavigate }: PlaceDetailSheetProps) {
+    const [risk, setRisk] = useState<RiskData | null>(null);
+    const [loadingRisk, setLoadingRisk] = useState(false);
+
+    useEffect(() => {
+        let isMounted = true;
+        setLoadingRisk(true);
+        setRisk(null);
+
+        floodWatchApi.getFloodRisk(place.latitude, place.longitude)
+            .then(data => {
+                if (isMounted) setRisk(data);
+            })
+            .catch(err => {
+                console.log("Risk fetch failed", err);
+            })
+            .finally(() => {
+                if (isMounted) setLoadingRisk(false);
+            });
+
+        return () => { isMounted = false; };
+    }, [place]);
+
     const onCopyCoordinates = async () => {
         await Clipboard.setStringAsync(`${place.latitude}, ${place.longitude}`);
     };
@@ -38,6 +61,29 @@ export default function PlaceDetailSheet({ place, onClose, onNavigate }: PlaceDe
                     <TouchableOpacity onPress={onCopyCoordinates} style={styles.copyButton}>
                         <Ionicons name="copy-outline" size={16} color="#70757a" />
                     </TouchableOpacity>
+                </View>
+
+                <View style={[styles.infoRow, { marginTop: 4 }]}>
+                    <MaterialIcons
+                        name="water-drop"
+                        size={20}
+                        color={!risk ? '#70757a' : (risk.risk_score > 0.6 ? '#D93025' : risk.risk_score > 0.3 ? '#F9AB00' : '#188038')}
+                        style={styles.infoIcon}
+                    />
+                    {loadingRisk ? (
+                        <Text style={styles.address}>Checking flood risk...</Text>
+                    ) : risk ? (
+                        <Text style={{
+                            fontSize: 14,
+                            fontWeight: 'bold',
+                            color: risk.risk_score > 0.6 ? '#D93025' : risk.risk_score > 0.3 ? '#F9AB00' : '#188038',
+                            flex: 1
+                        }}>
+                            {risk.risk_level} Risk ({(risk.risk_score * 100).toFixed(0)}%)
+                        </Text>
+                    ) : (
+                        <Text style={styles.address}>Flood risk data unavailable</Text>
+                    )}
                 </View>
 
                 <View style={styles.actions}>

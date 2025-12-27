@@ -5,28 +5,29 @@ import RouteInfoSheet from '@/components/RouteInfoSheet';
 import SearchBar from '@/components/SearchBar';
 import StepBanner from '@/components/StepBanner';
 import { Place } from '@/data/kolkataPlaces';
+import { floodWatchApi } from '@/services/api/floodWatch';
 import { reverseGeocode, searchNominatimByViewbox } from '@/services/api/nominatim';
+import { getRoute } from '@/services/api/openRouteService';
 import { BACKGROUND_NAVIGATION_TASK } from '@/services/backgroundLocationTask';
 import { getSavedPlaces, removePlace, savePlace } from '@/services/storage/placesStore';
 import * as Location from 'expo-location';
 import React, { useEffect, useRef, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Alert, StyleSheet, View } from 'react-native';
 import MapView, { MapType, Region } from 'react-native-maps';
-import { getRoute } from '../../services/api/openRouteService';
 
 import MapLayersSheet from '@/components/MapLayersSheet';
 
 // Helper for distance
 function getDistanceFromLatLonInMeters(lat1: number, lon1: number, lat2: number, lon2: number) {
-  var R = 6371; // Radius of the earth in km
-  var dLat = deg2rad(lat2 - lat1);
-  var dLon = deg2rad(lon2 - lon1);
-  var a =
+  const R = 6371; // Radius of the earth in km
+  const dLat = deg2rad(lat2 - lat1);
+  const dLon = deg2rad(lon2 - lon1);
+  const a =
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
     Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
     Math.sin(dLon / 2) * Math.sin(dLon / 2);
-  var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  var d = R * c; // Distance in km
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const d = R * c; // Distance in km
   return d * 1000;
 }
 
@@ -73,6 +74,12 @@ export default function HomeScreen() {
   const [showRoadCondition, setShowRoadCondition] = useState(false);
   const [showWaterlogging, setShowWaterlogging] = useState(false);
   const [showOverall, setShowOverall] = useState(false);
+
+  const [floodAlerts, setFloodAlerts] = useState<any[]>([]);
+  const [waterloggingOverlay, setWaterloggingOverlay] = useState<{
+    imageUrl: string;
+    bounds: [[number, number], [number, number]];
+  } | null>(null);
 
   const [travelMode, setTravelMode] = useState<'driving' | 'walking'>('driving');
 
@@ -668,6 +675,85 @@ export default function HomeScreen() {
   const currentStep = routeInfo?.steps ? routeInfo.steps[currentStepIndex] : null;
   const nextStep = routeInfo?.steps ? routeInfo.steps[currentStepIndex + 1] : null;
 
+  const submitFloodReport = async (level: number) => {
+    if (!userLocation) return;
+    try {
+      await floodWatchApi.submitReport(userLocation.coords.latitude, userLocation.coords.longitude, level);
+      Alert.alert("Report Sent", "Thank you! Your report helps the community.");
+    } catch (e) {
+      Alert.alert("Failed", "Could not send report. check connection.");
+    }
+  };
+
+  const onReportFlood = () => {
+    if (!userLocation) {
+      Alert.alert("Location needed", "Waiting for GPS...");
+      return;
+    }
+
+    Alert.alert(
+      "Report Waterlogging",
+      "How severe is the flooding here?",
+      [
+        { text: "Cancel", style: 'cancel' },
+        { text: "Low (Ankle)", onPress: () => submitFloodReport(1) },
+        { text: "Medium (Knee)", onPress: () => submitFloodReport(3) },
+        { text: "High (Waist)", onPress: () => submitFloodReport(5) },
+      ]
+    );
+  };
+
+  // Check alerts on load
+  useEffect(() => {
+    floodWatchApi.getAlerts().then(data => {
+      if (data.messages && data.messages.length > 0) {
+        Alert.alert("⚠️ Flood Alert", data.messages[0]);
+      }
+    }).catch(() => { }); // silent fail
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!showWaterlogging) {
+      setFloodAlerts([]);
+      setWaterloggingOverlay(null);
+      return;
+    }
+
+    (async () => {
+      try {
+        const [meta, alerts] = await Promise.all([
+          floodWatchApi.getMlPlotMeta('waterlogging_hotspots_28y'),
+          floodWatchApi.getAlerts(),
+        ]);
+
+        if (cancelled) return;
+
+        const b = meta?.meta?.bounds;
+        if (b) {
+          setWaterloggingOverlay({
+            imageUrl: floodWatchApi.getMlPlotUrl('waterlogging_hotspots_28y'),
+            bounds: [[b.south, b.west], [b.north, b.east]],
+          });
+        } else {
+          setWaterloggingOverlay(null);
+        }
+
+        setFloodAlerts(alerts?.alerts ?? []);
+      } catch (e) {
+        if (cancelled) return;
+        console.log('Waterlogging layer fetch failed', e);
+        setFloodAlerts([]);
+        setWaterloggingOverlay(null);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [showWaterlogging]);
+
 
 
   return (
@@ -676,6 +762,8 @@ export default function HomeScreen() {
         selectedPlace={selectedPlace}
         places={places}
         savedPlaces={savedPlaces}
+        floodAlerts={floodAlerts}
+        waterloggingOverlay={waterloggingOverlay}
         mapRef={mapRef}
         mapType={mapType}
         onRegionChangeComplete={onRegionChangeComplete}
@@ -706,6 +794,7 @@ export default function HomeScreen() {
         onRecenter={onRecenter}
         isUserLocationCentered={isCentered}
         onNavigate={selectedPlace && !routeInfo ? onNavigate : undefined}
+        onReport={!routeInfo ? onReportFlood : undefined}
         heading={heading}
         isCompassMode={isCompassMode}
         showLayers={!routeInfo}
