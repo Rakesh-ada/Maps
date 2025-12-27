@@ -17,7 +17,7 @@ interface KolkataMapProps {
     savedPlaces?: Place[];
     mapRef: React.RefObject<MapView | null>;
     mapType: MapType;
-    onRegionChangeComplete?: (region: Region) => void;
+    onRegionChangeComplete?: (region: Region, details?: { isGesture?: boolean }) => void;
     routeCoordinates?: { latitude: number; longitude: number }[];
     onPlaceSelect?: (place: Place) => void;
     onMapPress?: (coordinate: { latitude: number; longitude: number }) => void;

@@ -6,6 +6,7 @@ import SearchBar from '@/components/SearchBar';
 import StepBanner from '@/components/StepBanner';
 import { Place } from '@/data/kolkataPlaces';
 import { reverseGeocode, searchNominatimByViewbox } from '@/services/api/nominatim';
+import { BACKGROUND_NAVIGATION_TASK } from '@/services/backgroundLocationTask';
 import { getSavedPlaces, removePlace, savePlace } from '@/services/storage/placesStore';
 import * as Location from 'expo-location';
 import React, { useEffect, useRef, useState } from 'react';
@@ -31,6 +32,19 @@ function getDistanceFromLatLonInMeters(lat1: number, lon1: number, lat2: number,
 
 function deg2rad(deg: number) {
   return deg * (Math.PI / 180);
+}
+
+function calculateDistanceOfPath(path: { latitude: number; longitude: number }[]) {
+  let totalDist = 0;
+  for (let i = 0; i < path.length - 1; i++) {
+    totalDist += getDistanceFromLatLonInMeters(
+      path[i].latitude,
+      path[i].longitude,
+      path[i + 1].latitude,
+      path[i + 1].longitude
+    );
+  }
+  return totalDist;
 }
 
 export default function HomeScreen() {
@@ -69,6 +83,9 @@ export default function HomeScreen() {
   const isCompassModeRef = useRef(false);
   const routeInfoRef = useRef<{ distance: number; duration: number; steps?: any[] } | null>(null);
   const currentStepIndexRef = useRef(0);
+  const isStartingNavigation = useRef(false);
+  const isNavigationStartedRef = useRef(false);
+  const initialRouteMetrics = useRef<{ distance: number; duration: number } | null>(null);
 
   // Sync refs for use in potential closures/intervals if needed, 
   // though watcher callback usually captures fresh state if defined inside useEffect with deps,
@@ -166,6 +183,13 @@ export default function HomeScreen() {
                 targetLon = currentStep.maneuver.location[0];
               }
 
+              // Target for NEXT step (to check if we skipped ahead)
+              let nextTargetLat, nextTargetLon;
+              if (currentIndex + 2 < steps.length) {
+                nextTargetLat = steps[currentIndex + 2].maneuver.location[1];
+                nextTargetLon = steps[currentIndex + 2].maneuver.location[0];
+              }
+
               if (targetLat && targetLon) {
                 const dist = getDistanceFromLatLonInMeters(
                   newLocation.coords.latitude,
@@ -174,11 +198,25 @@ export default function HomeScreen() {
                   targetLon
                 );
 
+                let distToNext = Infinity;
+                if (nextTargetLat && nextTargetLon) {
+                  distToNext = getDistanceFromLatLonInMeters(
+                    newLocation.coords.latitude,
+                    newLocation.coords.longitude,
+                    nextTargetLat,
+                    nextTargetLon
+                  );
+                }
+
                 setCurrentStepDistance(dist);
 
-                // Auto-advance if within 30 meters
-                if (dist < 30 && currentIndex + 1 < steps.length) {
-                  setCurrentStepIndex(currentIndex + 1);
+                // Robust Advancement Logic:
+                // 1. Reached current target (within 50m)
+                // 2. OR Closer to NEXT target than current target (and reasonably close < 2km) -> implies missed turn but moved on
+                if ((dist < 50) || (distToNext < dist && distToNext < 2000)) {
+                  if (currentIndex + 1 < steps.length) {
+                    setCurrentStepIndex(currentIndex + 1);
+                  }
                 }
               }
 
@@ -293,8 +331,18 @@ export default function HomeScreen() {
     };
   }, []);
 
-  const onRegionChangeComplete = (newRegion: Region) => {
+  const onRegionChangeComplete = (newRegion: Region, details?: { isGesture?: boolean }) => {
+    // Always update region state to keep it in sync
     setRegion(newRegion);
+
+    // If it's NOT a user gesture (e.g. programmatic animation), ignore logic that would disable locking
+    if (details && !details.isGesture) {
+      return;
+    }
+
+    // IGNORE region changes during the start-navigation animation (double safety)
+    if (isStartingNavigation.current) return;
+
     if (userLocation) {
       const latDiff = Math.abs(newRegion.latitude - userLocation.coords.latitude);
       const lonDiff = Math.abs(newRegion.longitude - userLocation.coords.longitude);
@@ -411,6 +459,9 @@ export default function HomeScreen() {
 
   const startNavigation = () => {
     if (mapRef.current && userLocation) {
+      // Lock updates during animation
+      isStartingNavigation.current = true;
+
       setIsNavigationStarted(true);
       setIsCompassMode(true);
       // Reset step
@@ -421,9 +472,43 @@ export default function HomeScreen() {
         zoom: 18,
         pitch: 50,
         heading: heading,
-      }, { duration: 1000 });
+      }, { duration: 1500 });
+
+      // Unlock after animation + safety buffer
+      setTimeout(() => {
+        isStartingNavigation.current = false;
+        // Reinforce compass mode just in case
+        setIsCompassMode(true);
+      }, 2000);
+
+      // Start Background Updates for Persistent Notification
+      Location.requestBackgroundPermissionsAsync().then((res) => {
+        if (res.status === 'granted') {
+          // We rely on the useEffect below to actually start/update the task
+          // to ensure we always have the correct styling/text
+        }
+      });
     }
   };
+
+  // Dynamic Background Notification
+  useEffect(() => {
+    if (isNavigationStarted && routeInfo?.steps) {
+      const step = routeInfo.steps[currentStepIndex];
+      const instruction = step?.instruction || "Navigating...";
+
+      Location.startLocationUpdatesAsync(BACKGROUND_NAVIGATION_TASK, {
+        accuracy: Location.Accuracy.High,
+        distanceInterval: 5,
+        deferredUpdatesInterval: 1000,
+        foregroundService: {
+          notificationTitle: "Rasta Navigation",
+          notificationBody: instruction,
+          notificationColor: "#1A73E8"
+        }
+      }).catch(e => console.log("Bg task update failed", e));
+    }
+  }, [isNavigationStarted, currentStepIndex, routeInfo]);
 
   const onToggleSave = async () => {
     if (!selectedPlace) return;
