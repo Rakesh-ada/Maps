@@ -1,51 +1,70 @@
-import polyline from '@mapbox/polyline';
+// Force update
 import { apiClient } from './apiClient';
 
-// We use the OSRM / OSM public endpoints as a fallback/implementation for "OpenRouteService" 
-// per the previous context where these were used. 
-// Ideally this should use: https://api.openrouteservice.org/v2/directions/{profile}
-// But without a confirmed API Key logic in env, we stick to the working endpoints from index.tsx
-// while structurally preparing for ORS.
+const OSRM_BASE_URL = 'http://router.project-osrm.org/route/v1';
 
-export interface RouteCoordinates {
-    latitude: number;
-    longitude: number;
+export interface RouteStep {
+    distance: number;
+    duration: number;
+    maneuver: {
+        location: [number, number];
+        bearing_before: number;
+        bearing_after: number;
+        type: string;
+        modifier?: string;
+    };
+    name: string;
+}
+
+export interface RouteData {
+    coordinates: { latitude: number; longitude: number }[];
+    distance: number;
+    duration: number;
+    steps: RouteStep[];
 }
 
 export const getRoute = async (
-    start: RouteCoordinates,
-    end: RouteCoordinates,
+    start: { latitude: number; longitude: number },
+    end: { latitude: number; longitude: number },
     mode: 'driving' | 'walking' = 'driving'
-): Promise<{ coordinates: RouteCoordinates[]; distance: number; duration: number; steps: any[] } | null> => {
-    let url = '';
-    if (mode === 'walking') {
-        url = `https://routing.openstreetmap.de/routed-foot/route/v1/foot/${start.longitude},${start.latitude};${end.longitude},${end.latitude}?overview=full&geometries=polyline&steps=true`;
-    } else {
-        // driving
-        url = `https://router.project-osrm.org/route/v1/driving/${start.longitude},${start.latitude};${end.longitude},${end.latitude}?overview=full&geometries=polyline&steps=true`;
-    }
+): Promise<RouteData | null> => {
+    // OSRM supports 'driving' (car), 'walking' (foot), 'cycling' (bike)
+    // Map 'driving' -> 'driving', 'walking' -> 'foot'
+    const profile = mode === 'walking' ? 'foot' : 'driving';
+
+    // Coordinates formatted as "lon,lat"
+    const startCoord = `${start.longitude},${start.latitude}`;
+    const endCoord = `${end.longitude},${end.latitude}`;
+
+    const url = `${OSRM_BASE_URL}/${profile}/${startCoord};${endCoord}?overview=full&geometries=geojson&steps=true`;
 
     try {
-        const data = await apiClient<any>(url);
+        const data: any = await apiClient(url);
 
-        if (data.routes && data.routes.length > 0) {
-            const route = data.routes[0];
-            const points = polyline.decode(route.geometry);
-            const coords = points.map((point: number[]) => ({
-                latitude: point[0],
-                longitude: point[1]
-            }));
-
-            return {
-                coordinates: coords,
-                distance: route.distance,
-                duration: route.duration,
-                steps: route.legs?.[0]?.steps || []
-            };
+        if (!data.routes || data.routes.length === 0) {
+            throw new Error('No route found');
         }
-        return null;
+
+        const route = data.routes[0];
+        const geometry = route.geometry.coordinates;
+
+        // Convert GeoJSON [lon, lat] to { latitude, longitude }
+        const coordinates = geometry.map((coord: [number, number]) => ({
+            latitude: coord[1],
+            longitude: coord[0],
+        }));
+
+        // Flatten steps from all legs (usually just one leg)
+        const steps = route.legs.flatMap((leg: any) => leg.steps);
+
+        return {
+            coordinates,
+            distance: route.distance, // meters
+            duration: route.duration, // seconds
+            steps,
+        };
     } catch (error) {
-        console.error("Route fetching failed:", error);
+        console.error('OSRM Route fetch failed:', error);
         return null;
     }
 };
