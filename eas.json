@@ -4,11 +4,17 @@
     },
     "build": {
         "production": {
+            "env": {
+                "EXPO_PUBLIC_FLOODWATCH_BASE_URL": "https://floodwatch-ozhi.onrender.com"
+            },
             "android": {
                 "buildType": "app-bundle"
             }
         },
         "preview": {
+            "env": {
+                "EXPO_PUBLIC_FLOODWATCH_BASE_URL": "https://floodwatch-ozhi.onrender.com"
+            },
             "distribution": "internal",
             "android": {
                 "buildType": "apk"

@@ -5,12 +5,13 @@ import RouteInfoSheet from '@/components/RouteInfoSheet';
 import SearchBar from '@/components/SearchBar';
 import StepBanner from '@/components/StepBanner';
 import { Place } from '@/data/kolkataPlaces';
+import { getFloodRoute, getRiskHeatmapMeta, getRiskHeatmapPngUrl } from '@/services/api/floodWatch';
 import { reverseGeocode, searchNominatimByViewbox } from '@/services/api/nominatim';
 import { BACKGROUND_NAVIGATION_TASK } from '@/services/backgroundLocationTask';
 import { getSavedPlaces, removePlace, savePlace } from '@/services/storage/placesStore';
 import * as Location from 'expo-location';
 import React, { useEffect, useRef, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Alert, StyleSheet, View } from 'react-native';
 import MapView, { MapType, Region } from 'react-native-maps';
 import { getRoute } from '../../services/api/openRouteService';
 
@@ -18,15 +19,15 @@ import MapLayersSheet from '@/components/MapLayersSheet';
 
 // Helper for distance
 function getDistanceFromLatLonInMeters(lat1: number, lon1: number, lat2: number, lon2: number) {
-  var R = 6371; // Radius of the earth in km
-  var dLat = deg2rad(lat2 - lat1);
-  var dLon = deg2rad(lon2 - lon1);
-  var a =
+  const R = 6371; // Radius of the earth in km
+  const dLat = deg2rad(lat2 - lat1);
+  const dLon = deg2rad(lon2 - lon1);
+  const a =
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
     Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
     Math.sin(dLon / 2) * Math.sin(dLon / 2);
-  var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  var d = R * c; // Distance in km
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const d = R * c; // Distance in km
   return d * 1000;
 }
 
@@ -73,6 +74,12 @@ export default function HomeScreen() {
   const [showRoadCondition, setShowRoadCondition] = useState(false);
   const [showWaterlogging, setShowWaterlogging] = useState(false);
   const [showOverall, setShowOverall] = useState(false);
+
+  const [heatmapOverlay, setHeatmapOverlay] = useState<{
+    imageUrl: string;
+    bounds: [[number, number], [number, number]];
+    opacity?: number;
+  } | null>(null);
 
   const [travelMode, setTravelMode] = useState<'driving' | 'walking'>('driving');
 
@@ -122,6 +129,51 @@ export default function HomeScreen() {
   useEffect(() => {
     getSavedPlaces().then(setSavedPlaces);
   }, []);
+
+  useEffect(() => {
+    const mode = showWaterlogging ? 'waterlogging' : showOverall ? 'overall' : null;
+    let cancelled = false;
+
+    if (!mode) {
+      setHeatmapOverlay(null);
+      return;
+    }
+
+    (async () => {
+      try {
+        const res: any = await getRiskHeatmapMeta();
+        const bounds = res?.meta?.bounds;
+        const west = Number(bounds?.west);
+        const east = Number(bounds?.east);
+        const north = Number(bounds?.north);
+        const south = Number(bounds?.south);
+        const ok = [west, east, north, south].every((x) => Number.isFinite(x));
+        if (!ok) {
+          throw new Error('Invalid heatmap bounds returned by backend');
+        }
+
+        const imageUrl = getRiskHeatmapPngUrl();
+
+        if (!cancelled) {
+          setHeatmapOverlay({
+            imageUrl,
+            bounds: [
+              [south, west],
+              [north, east],
+            ],
+            opacity: mode === 'waterlogging' ? 0.65 : 0.55,
+          });
+        }
+      } catch (e: any) {
+        console.log('Heatmap overlay fetch failed:', e?.message || String(e));
+        if (!cancelled) setHeatmapOverlay(null);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [showWaterlogging, showOverall]);
 
   useEffect(() => {
     let locationSubscription: Location.LocationSubscription | null = null;
@@ -399,7 +451,47 @@ export default function HomeScreen() {
     const endLon = selectedPlace.longitude;
 
     try {
-      // Use generalized route service (wraps OSRM/OSM logic)
+      if (showWaterlogging) {
+        try {
+          const fw = await getFloodRoute(
+            { latitude: startLat, longitude: startLon },
+            { latitude: endLat, longitude: endLon },
+            true
+          );
+
+          if (fw && fw.coordinates.length > 1 && !fw.isFallback) {
+            setRouteCoordinates(fw.coordinates);
+
+            const distM = calculateDistanceOfPath(fw.coordinates);
+            const speedMps = mode === 'walking' ? 1.2 : 8.33;
+            const durationS = distM / speedMps;
+
+            setRouteInfo({
+              distance: distM,
+              duration: durationS,
+              steps: [],
+            });
+            setCurrentStepIndex(0);
+            setCurrentStepDistance(0);
+
+            if (mapRef.current) {
+              mapRef.current.fitToCoordinates(fw.coordinates, {
+                edgePadding: { top: 50, right: 50, bottom: 250, left: 50 },
+                animated: true,
+              });
+            }
+            return;
+          }
+
+          if (fw?.isFallback) {
+            Alert.alert('Safe route unavailable', 'Backend returned a fallback route. Using normal directions.');
+          }
+        } catch (e: any) {
+          console.log('FloodWatch route failed, using OSRM:', e?.message || String(e));
+        }
+      }
+
+      // Fallback to OSRM normal route
       const routeData = await getRoute(
         { latitude: startLat, longitude: startLon },
         { latitude: endLat, longitude: endLon },
@@ -458,6 +550,10 @@ export default function HomeScreen() {
   };
 
   const startNavigation = () => {
+    if (!routeInfo?.steps || routeInfo.steps.length === 0) {
+      Alert.alert('Navigation unavailable', 'Turn-by-turn steps are not available for the current route.');
+      return;
+    }
     if (mapRef.current && userLocation) {
       // Lock updates during animation
       isStartingNavigation.current = true;
@@ -688,6 +784,7 @@ export default function HomeScreen() {
         showRoadCondition={showRoadCondition}
         showWaterlogging={showWaterlogging}
         showOverall={showOverall}
+        heatmapOverlay={heatmapOverlay}
       />
 
       {!routeInfo ? (

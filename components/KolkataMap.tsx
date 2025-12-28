@@ -2,7 +2,7 @@ import { Place } from '@/data/kolkataPlaces';
 import { customMapStyle } from '@/data/mapStyles';
 import React, { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
-import MapView, { MapType, Marker, Polyline, Region } from 'react-native-maps';
+import MapView, { MapType, Marker, Overlay, Polyline, Region } from 'react-native-maps';
 
 const KOLKATA_REGION = {
     latitude: 22.5726,
@@ -27,9 +27,14 @@ interface KolkataMapProps {
     showRoadCondition?: boolean;
     showWaterlogging?: boolean;
     showOverall?: boolean;
+    heatmapOverlay?: {
+        imageUrl: string;
+        bounds: [[number, number], [number, number]];
+        opacity?: number;
+    } | null;
 }
 
-export default function KolkataMap({ selectedPlace, places = [], savedPlaces = [], mapRef, mapType, onRegionChangeComplete, routeCoordinates = [], onPlaceSelect, onMapPress, onPoiClick, isUserLocationCentered, showsTraffic = false, showRoadCondition = false, showWaterlogging = false, showOverall = false }: KolkataMapProps) {
+export default function KolkataMap({ selectedPlace, places = [], savedPlaces = [], mapRef, mapType, onRegionChangeComplete, routeCoordinates = [], onPlaceSelect, onMapPress, onPoiClick, isUserLocationCentered, showsTraffic = false, showRoadCondition = false, showWaterlogging = false, showOverall = false, heatmapOverlay = null }: KolkataMapProps) {
     useEffect(() => {
         if (selectedPlace && mapRef.current) {
             mapRef.current.animateToRegion({
@@ -111,6 +116,15 @@ export default function KolkataMap({ selectedPlace, places = [], savedPlaces = [
                         strokeColor="#4285F4"
                         strokeWidth={4}
                         zIndex={100}
+                    />
+                )}
+
+                {heatmapOverlay && (
+                    <Overlay
+                        image={{ uri: heatmapOverlay.imageUrl }}
+                        bounds={heatmapOverlay.bounds}
+                        opacity={heatmapOverlay.opacity ?? 0.55}
+                        zIndex={50}
                     />
                 )}
 
