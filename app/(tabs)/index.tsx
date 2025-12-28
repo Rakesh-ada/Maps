@@ -73,10 +73,26 @@ export default function HomeScreen() {
   const [showTraffic, setShowTraffic] = useState(false);
   const [showRoadCondition, setShowRoadCondition] = useState(false);
   const [showWaterlogging, setShowWaterlogging] = useState(false);
+  const [waterloggingHours, setWaterloggingHours] = useState(6);
+  const [waterloggingMode, setWaterloggingMode] = useState<'hours' | 'range'>('hours');
+  const [waterloggingFrom, setWaterloggingFrom] = useState('');
+  const [waterloggingTo, setWaterloggingTo] = useState('');
   const [showOverall, setShowOverall] = useState(false);
+  const [overallAt, setOverallAt] = useState('');
+  const [overallAtOptions, setOverallAtOptions] = useState<Array<{ label: string; value: string }>>([
+    { label: 'Live (now)', value: '' },
+  ]);
+  const [overallTestHistory, setOverallTestHistory] = useState<
+    Array<{ testedAt: string; riskScore: number; riskLevel: string; rainfallRaw?: number | null }>
+  >([]);
 
   const [floodAlerts, setFloodAlerts] = useState<any[]>([]);
   const [waterloggingOverlay, setWaterloggingOverlay] = useState<{
+    imageUrl: string;
+    bounds: [[number, number], [number, number]];
+  } | null>(null);
+
+  const [overallOverlay, setOverallOverlay] = useState<{
     imageUrl: string;
     bounds: [[number, number], [number, number]];
   } | null>(null);
@@ -93,6 +109,7 @@ export default function HomeScreen() {
   const isStartingNavigation = useRef(false);
   const isNavigationStartedRef = useRef(false);
   const initialRouteMetrics = useRef<{ distance: number; duration: number } | null>(null);
+  const safeRouteFallbackWarnedRef = useRef(false);
 
   // Sync refs for use in potential closures/intervals if needed, 
   // though watcher callback usually captures fresh state if defined inside useEffect with deps,
@@ -406,7 +423,89 @@ export default function HomeScreen() {
     const endLon = selectedPlace.longitude;
 
     try {
-      // Use generalized route service (wraps OSRM/OSM logic)
+      if (showWaterlogging) {
+        // Flood-aware route: length*(1+risk) (and optionally crowd waterlogging) from FloodWatch backend.
+        const safe = await floodWatchApi.getFloodRoute(startLat, startLon, endLat, endLon, { waterlogging: true });
+        if (safe?.geometry?.type === 'LineString' && Array.isArray(safe.geometry.coordinates)) {
+          const coords = safe.geometry.coordinates
+            .filter((c: any) => Array.isArray(c) && c.length >= 2)
+            .map((c: any) => ({ latitude: Number(c[1]), longitude: Number(c[0]) }))
+            .filter((p: any) => Number.isFinite(p.latitude) && Number.isFinite(p.longitude));
+
+          const isLikelyFallback = (() => {
+            const explicit = Boolean((safe as any)?.is_fallback);
+            if (explicit) return true;
+            if (coords.length !== 2) return false;
+            const eps = 1e-6;
+            const c0 = coords[0];
+            const c1 = coords[1];
+            const startMatch = Math.abs(c0.latitude - startLat) < eps && Math.abs(c0.longitude - startLon) < eps;
+            const endMatch = Math.abs(c1.latitude - endLat) < eps && Math.abs(c1.longitude - endLon) < eps;
+            return startMatch && endMatch;
+          })();
+
+          if (coords.length >= 2 && !isLikelyFallback) {
+            setRouteCoordinates(coords);
+
+            const distanceM = Number(safe.distance_km) * 1000;
+            const speedMps = mode === 'walking' ? 1.4 : 8.3; // ~5 km/h walk, ~30 km/h drive
+            const durationS = distanceM / speedMps;
+
+            const safeSteps: any[] = [
+              {
+                distance: distanceM,
+                duration: durationS,
+                maneuver: {
+                  location: [startLon, startLat],
+                  bearing_before: 0,
+                  bearing_after: 0,
+                  type: 'depart',
+                },
+                name: '',
+                instruction: 'Follow the safest route',
+              },
+              {
+                distance: 0,
+                duration: 0,
+                maneuver: {
+                  location: [endLon, endLat],
+                  bearing_before: 0,
+                  bearing_after: 0,
+                  type: 'arrive',
+                },
+                name: '',
+                instruction: 'Arrive at destination',
+              },
+            ];
+
+            setRouteInfo({
+              distance: distanceM,
+              duration: durationS,
+              steps: safeSteps,
+            });
+            setCurrentStepIndex(0);
+            setCurrentStepDistance(safeSteps[0]?.distance || 0);
+
+            if (mapRef.current) {
+              mapRef.current.fitToCoordinates(coords, {
+                edgePadding: { top: 50, right: 50, bottom: 250, left: 50 },
+                animated: true,
+              });
+            }
+            return;
+          }
+
+          if (isLikelyFallback && !safeRouteFallbackWarnedRef.current) {
+            safeRouteFallbackWarnedRef.current = true;
+            Alert.alert(
+              'Safe route not available yet',
+              'Flood-aware routing needs a Kolkata roads graph on the backend. Showing the normal road route for now.'
+            );
+          }
+        }
+      }
+
+      // Default: shortest/fastest route via OSRM
       const routeData = await getRoute(
         { latitude: startLat, longitude: startLon },
         { latitude: endLat, longitude: endLon },
@@ -437,7 +536,7 @@ export default function HomeScreen() {
         setRouteInfo({
           distance: routeData.distance,
           duration: routeData.duration,
-          steps: enhancedSteps,
+          steps: enhancedSteps
         });
         setCurrentStepIndex(0);
         setCurrentStepDistance(enhancedSteps[0]?.distance || 0);
@@ -723,8 +822,13 @@ export default function HomeScreen() {
 
     (async () => {
       try {
+        const useRange = waterloggingMode === 'range' && Boolean(waterloggingFrom.trim()) && Boolean(waterloggingTo.trim());
+        const wlQuery = useRange
+          ? { hours: waterloggingHours, from: waterloggingFrom.trim(), to: waterloggingTo.trim() }
+          : { hours: waterloggingHours };
+
         const [meta, alerts] = await Promise.all([
-          floodWatchApi.getMlPlotMeta('waterlogging_hotspots_28y'),
+          floodWatchApi.getMlPlotMeta('waterlogging_combined', wlQuery),
           floodWatchApi.getAlerts(),
         ]);
 
@@ -733,7 +837,7 @@ export default function HomeScreen() {
         const b = meta?.meta?.bounds;
         if (b) {
           setWaterloggingOverlay({
-            imageUrl: floodWatchApi.getMlPlotUrl('waterlogging_hotspots_28y'),
+            imageUrl: floodWatchApi.getMlPlotUrl('waterlogging_combined', wlQuery),
             bounds: [[b.south, b.west], [b.north, b.east]],
           });
         } else {
@@ -752,7 +856,134 @@ export default function HomeScreen() {
     return () => {
       cancelled = true;
     };
-  }, [showWaterlogging]);
+  }, [showWaterlogging, waterloggingHours, waterloggingMode, waterloggingFrom, waterloggingTo]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!showOverall) {
+      setOverallOverlay(null);
+      return;
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [showOverall]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!isLayersSheetVisible || !showOverall) return;
+
+    (async () => {
+      try {
+        const res = await floodWatchApi.getRainfallTimes(40);
+        if (cancelled) return;
+
+        const times = Array.isArray(res?.times) ? res.times : [];
+        const opts: Array<{ label: string; value: string }> = [
+          { label: 'Live (now)', value: '' },
+          ...times.map((t: any) => ({
+            label: String(t.ts_utc),
+            value: String(t.ts_utc),
+          })),
+        ];
+        setOverallAtOptions(opts);
+      } catch (e) {
+        if (cancelled) return;
+        console.log('Rainfall times fetch failed', e);
+        setOverallAtOptions([{ label: 'Live (now)', value: '' }]);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isLayersSheetVisible, showOverall]);
+
+  const testOverallAt = async () => {
+    try {
+      const at = overallAt.trim();
+      const lat = userLocation?.coords?.latitude ?? 22.5726;
+      const lon = userLocation?.coords?.longitude ?? 88.3639;
+
+      console.log('[ML TEST] Overall at=', at || '(live)', 'lat=', lat, 'lon=', lon);
+      const risk = await floodWatchApi.getFloodRisk(lat, lon, at ? at : undefined);
+      console.log('[ML TEST] Result', {
+        risk_score: risk?.risk_score,
+        risk_level: risk?.risk_level,
+        as_of: risk?.as_of,
+      });
+
+      setOverallTestHistory((prev) => {
+        const entry = {
+          testedAt: at || '(live)',
+          riskScore: Number(risk?.risk_score ?? 0),
+          riskLevel: String(risk?.risk_level ?? ''),
+          rainfallRaw: risk?.as_of?.rainfall_raw ?? null,
+        };
+        return [entry, ...prev].slice(0, 20);
+      });
+
+      if (showOverall) {
+        const q = at ? { at } : undefined;
+        const meta = await floodWatchApi.getMlPlotMeta('risk_heatmap.png', q);
+        const b = meta?.meta?.bounds;
+        if (b) {
+          setOverallOverlay({
+            imageUrl: floodWatchApi.getMlPlotUrl('risk_heatmap.png', { ...(q ?? {}), cacheBust: true }),
+            bounds: [[b.south, b.west], [b.north, b.east]],
+          });
+        } else {
+          setOverallOverlay(null);
+        }
+      }
+    } catch (e: any) {
+      const msg = String(e?.message || e || 'Unknown error');
+      console.log('[ML TEST] Failed', msg);
+      if (msg.toLowerCase().includes('no data found')) {
+        Alert.alert('No data found', 'No rainfall data exists for the selected timestamp. Please pick a timestamp from the dropdown list.');
+      } else {
+        Alert.alert('Test failed', msg);
+      }
+    }
+  };
+
+  const testWaterloggingWindow = async (fromIso: string, toIso: string) => {
+    try {
+      const f = String(fromIso || '').trim();
+      const t = String(toIso || '').trim();
+      if (!f || !t) {
+        Alert.alert('Invalid time window', 'Please enter both From and To date+time to test.');
+        return;
+      }
+
+      console.log('[WL TEST] from=', f, 'to=', t);
+
+      const meta = await floodWatchApi.getMlPlotMeta('waterlogging_combined', {
+        hours: waterloggingHours,
+        from: f,
+        to: t,
+      });
+
+      console.log('[WL TEST] Meta', {
+        bounds: meta?.meta?.bounds,
+        window: (meta as any)?.window,
+      });
+
+      const b = meta?.meta?.bounds;
+      if (b) {
+        setWaterloggingOverlay({
+          imageUrl: floodWatchApi.getMlPlotUrl('waterlogging_combined', { hours: waterloggingHours, from: f, to: t, cacheBust: true }),
+          bounds: [[b.south, b.west], [b.north, b.east]],
+        });
+      }
+    } catch (e: any) {
+      const msg = String(e?.message || e || 'Unknown error');
+      console.log('[WL TEST] Failed', msg);
+      Alert.alert('Waterlogging test failed', msg);
+    }
+  };
 
 
 
@@ -764,6 +995,7 @@ export default function HomeScreen() {
         savedPlaces={savedPlaces}
         floodAlerts={floodAlerts}
         waterloggingOverlay={waterloggingOverlay}
+        overallOverlay={overallOverlay}
         mapRef={mapRef}
         mapType={mapType}
         onRegionChangeComplete={onRegionChangeComplete}
@@ -830,8 +1062,22 @@ export default function HomeScreen() {
         onToggleRoadCondition={() => setShowRoadCondition(prev => !prev)}
         showWaterlogging={showWaterlogging}
         onToggleWaterlogging={() => setShowWaterlogging(prev => !prev)}
+        waterloggingHours={waterloggingHours}
+        onWaterloggingHoursChange={setWaterloggingHours}
+        waterloggingMode={waterloggingMode}
+        onWaterloggingModeChange={setWaterloggingMode}
+        waterloggingFrom={waterloggingFrom}
+        waterloggingTo={waterloggingTo}
+        onWaterloggingFromChange={setWaterloggingFrom}
+        onWaterloggingToChange={setWaterloggingTo}
+        onWaterloggingTest={testWaterloggingWindow}
         showOverall={showOverall}
         onToggleOverall={() => setShowOverall(prev => !prev)}
+        overallAt={overallAt}
+        onOverallAtChange={setOverallAt}
+        overallAtOptions={overallAtOptions}
+        onOverallTest={testOverallAt}
+        overallTestHistory={overallTestHistory}
       />
     </View>
   );

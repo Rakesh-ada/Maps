@@ -20,6 +20,10 @@ interface KolkataMapProps {
         imageUrl: string;
         bounds: [[number, number], [number, number]];
     } | null;
+    overallOverlay?: {
+        imageUrl: string;
+        bounds: [[number, number], [number, number]];
+    } | null;
     mapRef: React.RefObject<MapView | null>;
     mapType: MapType;
     onRegionChangeComplete?: (region: Region, details?: { isGesture?: boolean }) => void;
@@ -34,7 +38,7 @@ interface KolkataMapProps {
     showOverall?: boolean;
 }
 
-export default function KolkataMap({ selectedPlace, places = [], savedPlaces = [], floodAlerts = [], waterloggingOverlay = null, mapRef, mapType, onRegionChangeComplete, routeCoordinates = [], onPlaceSelect, onMapPress, onPoiClick, isUserLocationCentered, showsTraffic = false, showRoadCondition = false, showWaterlogging = false, showOverall = false }: KolkataMapProps) {
+export default function KolkataMap({ selectedPlace, places = [], savedPlaces = [], floodAlerts = [], waterloggingOverlay = null, overallOverlay = null, mapRef, mapType, onRegionChangeComplete, routeCoordinates = [], onPlaceSelect, onMapPress, onPoiClick, isUserLocationCentered, showsTraffic = false, showRoadCondition = false, showWaterlogging = false, showOverall = false }: KolkataMapProps) {
     useEffect(() => {
         if (selectedPlace && mapRef.current) {
             mapRef.current.animateToRegion({
@@ -87,6 +91,13 @@ export default function KolkataMap({ selectedPlace, places = [], savedPlaces = [
                     tileSize={256}
                     zIndex={1}
                 /> */}
+
+                {showOverall && overallOverlay?.imageUrl && (
+                    <Overlay
+                        bounds={overallOverlay.bounds}
+                        image={{ uri: overallOverlay.imageUrl }}
+                    />
+                )}
 
                 {showWaterlogging && waterloggingOverlay?.imageUrl && (
                     <Overlay

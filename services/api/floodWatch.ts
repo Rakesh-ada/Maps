@@ -70,6 +70,11 @@ export interface RiskData {
         cluster: number;
         anomaly: number;
     };
+    as_of?: {
+        ts_epoch: number;
+        ts_utc: string;
+        rainfall_raw: number | null;
+    };
 }
 
 export interface RouteGeometry {
@@ -81,6 +86,7 @@ export interface FloodRouteData {
     distance_km: number;
     route_risk: number;
     geometry: RouteGeometry;
+    is_fallback?: boolean;
 }
 
 export interface Alert {
@@ -103,6 +109,11 @@ export interface MlPlotBounds {
     north: number;
 }
 
+export interface RainfallTime {
+    ts_epoch: number;
+    ts_utc: string;
+}
+
 export interface MlPlotMetaResponse {
     plot: string;
     meta: {
@@ -110,7 +121,18 @@ export interface MlPlotMetaResponse {
         bins?: number;
         [key: string]: any;
     };
+    window?: {
+        from_ts: number;
+        to_ts: number;
+    } | null;
 }
+
+type MlPlotQuery = {
+    hours?: number;
+    from?: string;
+    to?: string;
+    at?: string;
+};
 
 export const floodWatchApi = {
     /**
@@ -123,8 +145,10 @@ export const floodWatchApi = {
     /**
      * Get flood risk for a specific location
      */
-    getFloodRisk: async (lat: number, lon: number): Promise<RiskData> => {
-        const url = `${API_BASE_URL}/risk?lat=${lat}&lon=${lon}`;
+    getFloodRisk: async (lat: number, lon: number, at?: string): Promise<RiskData> => {
+        const qsParts: string[] = [`lat=${encodeURIComponent(String(lat))}`, `lon=${encodeURIComponent(String(lon))}`];
+        if (typeof at === 'string' && at.trim()) qsParts.push(`at=${encodeURIComponent(at.trim())}`);
+        const url = `${API_BASE_URL}/risk?${qsParts.join('&')}`;
         return apiClient<RiskData>(url);
     },
 
@@ -136,8 +160,15 @@ export const floodWatchApi = {
         startLon: number,
         endLat: number,
         endLon: number
-    ): Promise<FloodRouteData> => {
-        const url = `${API_BASE_URL}/route?start_lat=${startLat}&start_lon=${startLon}&end_lat=${endLat}&end_lon=${endLon}`;
+    , opts?: { waterlogging?: boolean }): Promise<FloodRouteData> => {
+        const qsParts: string[] = [
+            `start_lat=${encodeURIComponent(String(startLat))}`,
+            `start_lon=${encodeURIComponent(String(startLon))}`,
+            `end_lat=${encodeURIComponent(String(endLat))}`,
+            `end_lon=${encodeURIComponent(String(endLon))}`,
+        ];
+        if (opts?.waterlogging) qsParts.push('waterlogging=1');
+        const url = `${API_BASE_URL}/route?${qsParts.join('&')}`;
         return apiClient<FloodRouteData>(url);
     },
 
@@ -162,13 +193,38 @@ export const floodWatchApi = {
         return apiClient(`${API_BASE_URL}/alerts`);
     },
 
-    getMlPlotMeta: async (plotName: string): Promise<MlPlotMetaResponse> => {
-        return apiClient(`${API_BASE_URL}/ml/plot_meta/${encodeURIComponent(plotName)}`);
+    getMlPlotMeta: async (plotName: string, query?: MlPlotQuery): Promise<MlPlotMetaResponse> => {
+        const base = `${API_BASE_URL}/ml/plot_meta/${encodeURIComponent(plotName)}`;
+        const qsParts: string[] = [];
+        if (typeof query?.hours === 'number') qsParts.push(`hours=${encodeURIComponent(String(query.hours))}`);
+        if (typeof query?.from === 'string' && query.from.trim()) qsParts.push(`from=${encodeURIComponent(query.from.trim())}`);
+        if (typeof query?.to === 'string' && query.to.trim()) qsParts.push(`to=${encodeURIComponent(query.to.trim())}`);
+        if (typeof query?.at === 'string' && query.at.trim()) qsParts.push(`at=${encodeURIComponent(query.at.trim())}`);
+        const qs = qsParts.length ? `?${qsParts.join('&')}` : '';
+        return apiClient(`${base}${qs}`);
     },
 
-    getMlPlotUrl: (plotName: string, cacheBust = true): string => {
+    getRainfallTimes: async (limit: number = 30): Promise<{ times: RainfallTime[] }> => {
+        const url = `${API_BASE_URL}/ml/rainfall_times?limit=${encodeURIComponent(String(limit))}`;
+        return apiClient<{ times: RainfallTime[] }>(url);
+    },
+
+    getMlPlotUrl: (
+        plotName: string,
+        cacheBustOrOpts: boolean | (MlPlotQuery & { cacheBust?: boolean }) = true
+    ): string => {
         const base = `${API_BASE_URL}/ml/plot/${encodeURIComponent(plotName)}`;
-        return cacheBust ? `${base}?t=${Date.now()}` : base;
+        const opts = typeof cacheBustOrOpts === 'boolean' ? { cacheBust: cacheBustOrOpts } : (cacheBustOrOpts ?? {});
+
+        const qsParts: string[] = [];
+        if (typeof opts.hours === 'number') qsParts.push(`hours=${encodeURIComponent(String(opts.hours))}`);
+        if (typeof opts.from === 'string' && opts.from.trim()) qsParts.push(`from=${encodeURIComponent(opts.from.trim())}`);
+        if (typeof opts.to === 'string' && opts.to.trim()) qsParts.push(`to=${encodeURIComponent(opts.to.trim())}`);
+        if (typeof opts.at === 'string' && opts.at.trim()) qsParts.push(`at=${encodeURIComponent(opts.at.trim())}`);
+        const cacheBust = opts.cacheBust !== false;
+        if (cacheBust) qsParts.push(`t=${Date.now()}`);
+
+        return qsParts.length ? `${base}?${qsParts.join('&')}` : base;
     },
 
     /**

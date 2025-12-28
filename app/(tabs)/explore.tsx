@@ -60,6 +60,7 @@ export default function WeatherScreen() {
 
   const loadWeatherData = async () => {
     try {
+      setErrorMsg(null);
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
         setErrorMsg('Permission to access location was denied');
@@ -76,6 +77,12 @@ export default function WeatherScreen() {
         fetchDailyForecast(latitude, longitude)
       ]);
 
+      if (!currentData) {
+        setErrorMsg('Failed to load weather data');
+        setLoading(false);
+        return;
+      }
+
       setWeather(currentData);
       setForecast(hourlyData);
       setDailyForecast(dailyData);
@@ -85,7 +92,8 @@ export default function WeatherScreen() {
       cachedForecast = hourlyData;
       cachedDaily = dailyData;
     } catch (error) {
-      setErrorMsg('Failed to load weather data');
+      const msg = error instanceof Error && error.message ? error.message : 'Failed to load weather data';
+      setErrorMsg(msg);
     } finally {
       setLoading(false);
     }
@@ -102,7 +110,7 @@ export default function WeatherScreen() {
   if (errorMsg || !weather) {
     return (
       <View style={styles.loadingContainer}>
-        <Text style={styles.errorText}>{errorMsg || 'Something went wrong'}</Text>
+        <Text style={styles.errorText}>{errorMsg || 'Weather data unavailable'}</Text>
         <Text onPress={loadWeatherData} style={{ marginTop: 20, color: '#3fa2f7', fontSize: 16, fontWeight: 'bold' }}>
           Tap to Retry
         </Text>

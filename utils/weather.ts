@@ -46,8 +46,9 @@ export const fetchCurrentWeather = async (lat: number, lon: number): Promise<Wea
         const data = await response.json();
 
         if (data.cod !== 200) {
-            console.error('Weather API Error:', data.message);
-            return null;
+            const msg = typeof data?.message === 'string' ? data.message : 'Weather API error';
+            console.error('Weather API Error:', msg);
+            throw new Error(msg);
         }
 
         return {
@@ -67,7 +68,7 @@ export const fetchCurrentWeather = async (lat: number, lon: number): Promise<Wea
         };
     } catch (error) {
         console.error('Error fetching weather:', error);
-        return null;
+        throw error;
     }
 };
 
